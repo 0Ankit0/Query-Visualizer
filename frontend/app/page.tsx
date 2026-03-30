@@ -3,6 +3,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { StepCard } from "@/components/StepCard";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { fetchDialects, fetchExamples, parseQuery, validateQuery, visualizeQuery } from "@/lib/api";
 import type { Dialect, ParseResponse, QueryExample, ValidationResponse, VisualizationResponse } from "@/lib/types";
 
@@ -74,128 +79,153 @@ export default function HomePage() {
   }
 
   return (
-    <main>
-      <h1>Database Query Visualizer</h1>
-      <p>
-        Validate, parse, and visualize SQL execution flow for PostgreSQL and generic SQL. This view is optimized for new SQL learners.
-      </p>
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 pb-10 md:p-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">Database Query Visualizer</CardTitle>
+          <CardDescription>
+            Validate, parse, and visualize SQL execution flow for PostgreSQL and generic SQL.
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
-      <form className="card" onSubmit={onSubmit}>
-        <label htmlFor="dialect">Dialect</label>
-        <select id="dialect" value={dialect} onChange={(event) => setDialect(event.target.value as Dialect)}>
-          {supportedDialects.map((supported) => (
-            <option key={supported} value={supported}>
-              {supported === "postgres" ? "PostgreSQL" : "SQL (generic)"}
-            </option>
-          ))}
-        </select>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Run analysis</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="dialect">Dialect</Label>
+              <Select id="dialect" value={dialect} onChange={(event) => setDialect(event.target.value as Dialect)}>
+                {supportedDialects.map((supported) => (
+                  <option key={supported} value={supported}>
+                    {supported === "postgres" ? "PostgreSQL" : "SQL (generic)"}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-        <label htmlFor="example" style={{ marginTop: "1rem", display: "block" }}>
-          Quick examples
-        </label>
-        <select
-          id="example"
-          onChange={(event) => {
-            const selected = examplesForDialect.find((item) => item.name === event.target.value);
-            if (selected) {
-              setQuery(selected.query);
-            }
-          }}
-          defaultValue=""
-        >
-          <option value="" disabled>
-            Pick an example query
-          </option>
-          {examplesForDialect.map((example) => (
-            <option key={example.name} value={example.name}>
-              {example.name}
-            </option>
-          ))}
-        </select>
+            <div className="space-y-2">
+              <Label htmlFor="example">Quick examples</Label>
+              <Select
+                id="example"
+                onChange={(event) => {
+                  const selected = examplesForDialect.find((item) => item.name === event.target.value);
+                  if (selected) {
+                    setQuery(selected.query);
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Pick an example query
+                </option>
+                {examplesForDialect.map((example) => (
+                  <option key={example.name} value={example.name}>
+                    {example.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-        <label htmlFor="query" style={{ marginTop: "1rem", display: "block" }}>
-          SQL Query
-        </label>
-        <textarea id="query" rows={12} value={query} onChange={(event) => setQuery(event.target.value)} />
+            <div className="space-y-2">
+              <Label htmlFor="query">SQL Query</Label>
+              <Textarea id="query" rows={12} value={query} onChange={(event) => setQuery(event.target.value)} />
+            </div>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Processing..." : "Validate + Parse + Visualize"}
-        </button>
-      </form>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Processing..." : "Validate + Parse + Visualize"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {error && (
-        <section className="card error-card" style={{ marginTop: "1rem" }}>
-          <strong>Error:</strong> {error}
-        </section>
+        <Card className="border-destructive/40 bg-destructive/10">
+          <CardContent className="p-4 text-sm">
+            <strong>Error:</strong> {error}
+          </CardContent>
+        </Card>
       )}
 
       {validation && (
-        <section className="card" style={{ marginTop: "1rem" }}>
-          <h2>Validation</h2>
-          <p>
-            <strong>Status:</strong> {validation.is_valid ? "Valid SQL" : "Invalid SQL"}
-          </p>
-          {validation.normalized_query && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Validation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
             <p>
-              <strong>Normalized query:</strong>
-              <br />
-              <code>{validation.normalized_query}</code>
+              <strong>Status:</strong> {validation.is_valid ? "Valid SQL" : "Invalid SQL"}
             </p>
-          )}
-          {!validation.is_valid && validation.errors.length > 0 && (
-            <ul>
-              {validation.errors.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          )}
-        </section>
+            {validation.normalized_query && (
+              <p>
+                <strong>Normalized query:</strong>
+                <br />
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{validation.normalized_query}</code>
+              </p>
+            )}
+            {!validation.is_valid && validation.errors.length > 0 && (
+              <ul className="list-inside list-disc">
+                {validation.errors.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {parseResult && (
-        <section className="card" style={{ marginTop: "1rem" }}>
-          <h2>Parse Details</h2>
-          <p>
-            <strong>Statement type:</strong> {parseResult.statement_type}
-          </p>
-          <p>
-            <strong>AST SQL (compact):</strong>
-            <br />
-            <code>{parseResult.ast_sql}</code>
-          </p>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Parse Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p>
+              <strong>Statement type:</strong> {parseResult.statement_type}
+            </p>
+            <p>
+              <strong>AST SQL (compact):</strong>
+              <br />
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{parseResult.ast_sql}</code>
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {visualization && (
-        <section style={{ marginTop: "1rem" }}>
-          <div className="card">
-            <h2>Visualization</h2>
-            <p>
-              <strong>Statement type:</strong> {visualization.statement_type}
-            </p>
-            <p>
-              <strong>Normalized Query</strong>
-              <br />
-              <code>{visualization.normalized_query}</code>
-            </p>
-          </div>
+        <section className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Visualization</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p>
+                <strong>Statement type:</strong> {visualization.statement_type}
+              </p>
+              <p>
+                <strong>Normalized query:</strong>
+                <br />
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{visualization.normalized_query}</code>
+              </p>
+            </CardContent>
+          </Card>
 
-          <div className="steps">
-            {visualization.steps.map((step, index) => (
-              <StepCard key={`${step.key}-${index}`} step={step} index={index} />
-            ))}
-          </div>
+          <div className="grid gap-3">{visualization.steps.map((step, index) => <StepCard key={`${step.key}-${index}`} step={step} index={index} />)}</div>
 
-          <section className="card" style={{ marginTop: "1rem" }}>
-            <h3>Notes</h3>
-            <ul>
-              {visualization.notes.map((note) => (
-                <li key={note} className="note">
-                  {note}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                {visualization.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
         </section>
       )}
     </main>
