@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { StepCard } from "@/components/StepCard";
+import { VisualizationBoard } from "@/components/VisualizationBoard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -196,9 +197,21 @@ export default function HomePage() {
 
       {visualization && (
         <section className="space-y-4">
+          <VisualizationBoard
+            steps={visualization.steps}
+            statementType={visualization.statement_type}
+            normalizedQuery={visualization.normalized_query}
+            sources={visualization.sources}
+            joins={visualization.joins}
+            outputColumns={visualization.output_columns}
+            filters={visualization.filters}
+            groups={visualization.groups}
+            orderBy={visualization.order_by}
+          />
+
           <Card>
             <CardHeader>
-              <CardTitle>Visualization</CardTitle>
+              <CardTitle>Step Breakdown</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p>
@@ -212,7 +225,9 @@ export default function HomePage() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-3">{visualization.steps.map((step, index) => <StepCard key={`${step.key}-${index}`} step={step} index={index} />)}</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {visualization.steps.map((step, index) => <StepCard key={`${step.key}-${index}`} step={step} index={index} />)}
+          </div>
 
           <Card>
             <CardHeader>

@@ -24,12 +24,38 @@ export interface VisualizationStep {
   title: string;
   description: string;
   focus: string;
+  lanes: VisualizationLane[];
+}
+
+export interface VisualizationLane {
+  label: string;
+  items: string[];
+  tone: string;
+}
+
+export interface VisualizationSource {
+  name: string;
+  alias?: string | null;
+  kind: string;
+}
+
+export interface VisualizationJoin {
+  join_type: string;
+  target: string;
+  alias?: string | null;
+  condition?: string | null;
 }
 
 export interface VisualizationResponse {
   dialect: Dialect;
   statement_type: string;
   normalized_query: string;
+  sources: VisualizationSource[];
+  joins: VisualizationJoin[];
+  output_columns: string[];
+  filters: string[];
+  groups: string[];
+  order_by: string[];
   steps: VisualizationStep[];
   notes: string[];
 }

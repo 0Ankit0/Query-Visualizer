@@ -26,6 +26,14 @@ def test_select_visualization_order() -> None:
         "Sort rows",
         "Paginate result",
     ]
+    assert result.steps[0].lanes[0].label == "Sources"
+    assert result.steps[1].lanes[2].label == "Conditions"
+    assert result.steps[5].lanes[1].items == ["c.name", "COUNT(o.id) AS total_orders"]
+    assert [source.name for source in result.sources] == ["customers"]
+    assert result.joins[0].target == "orders"
+    assert result.output_columns == ["c.name", "COUNT(o.id) AS total_orders"]
+    assert result.groups == ["c.name"]
+    assert result.order_by == ["total_orders DESC"]
 
 
 def test_postgres_returning_supported() -> None:
@@ -35,6 +43,8 @@ def test_postgres_returning_supported() -> None:
 
     assert result.statement_type == "UPDATE"
     assert any(step.title == "Return affected rows" for step in result.steps)
+    returning_step = next(step for step in result.steps if step.title == "Return affected rows")
+    assert returning_step.lanes[1].items == ["id", "name"]
 
 
 def test_parse_query_returns_statement_type() -> None:
