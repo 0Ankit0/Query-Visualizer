@@ -3,11 +3,12 @@ name = "backend"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi==0.116.1",
     "uvicorn[standard]==0.35.0",
     "pydantic==2.11.7",
+    "psycopg[binary]==3.2.9",
     "sqlglot==27.19.0",
     "pytest==8.4.2",
     "httpx==0.28.1",
