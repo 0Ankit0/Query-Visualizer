@@ -5,7 +5,25 @@ SUPPORTED_DIALECTS = ("postgres", "sql")
 
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="SQL query text to process")
-    dialect: str = Field(default="sql", description="Supported values: postgres, sql")
+    dialect: str = Field(default="postgres", description="Supported values: postgres, sql")
+
+
+class ExplainPlanNode(BaseModel):
+    node_type: str
+    relation_name: str | None = None
+    startup_cost: float | None = None
+    total_cost: float | None = None
+    actual_total_time: float | None = None
+    actual_rows: int | None = None
+    children: list["ExplainPlanNode"] = Field(default_factory=list)
+
+
+class ExplainAnalysis(BaseModel):
+    available: bool
+    summary: str
+    root_node: ExplainPlanNode | None = None
+    plan_lines: list[str] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
 
 
 class ValidationResponse(BaseModel):
@@ -61,6 +79,14 @@ class VisualizationResponse(BaseModel):
     order_by: list[str] = Field(default_factory=list)
     steps: list[VisualizationStep]
     notes: list[str]
+    explain_analysis: ExplainAnalysis | None = None
+
+
+class ExplainResponse(BaseModel):
+    dialect: str
+    normalized_query: str
+    statement_type: str
+    explain_analysis: ExplainAnalysis
 
 
 class DialectsResponse(BaseModel):
