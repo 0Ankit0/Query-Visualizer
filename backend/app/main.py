@@ -7,8 +7,8 @@ app = FastAPI(
     title="Query Visualizer API",
     version="0.2.0",
     description=(
-        "API for validating, parsing, and generating step-by-step visualizations "
-        "for PostgreSQL and generic SQL queries."
+        "API for validating, parsing, PostgreSQL EXPLAIN ANALYZE inspection, "
+        "and step-by-step visualization for PostgreSQL-compatible SQL queries."
     ),
 )
 

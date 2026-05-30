@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import (
     DialectsResponse,
+    ExplainResponse,
     ExamplesResponse,
     ParseResponse,
     QueryExample,
@@ -9,14 +10,14 @@ from app.models.schemas import (
     ValidationResponse,
     VisualizationResponse,
 )
-from app.services.visualizer import SUPPORTED_DIALECTS, parse_query, validate_query, visualize_query
+from app.services.visualizer import SUPPORTED_DIALECTS, explain_query, parse_query, validate_query, visualize_query
 
 router = APIRouter(tags=["query-visualizer"])
 
 EXAMPLES = [
     QueryExample(
         name="Top customers by order count",
-        dialect="sql",
+        dialect="postgres",
         query=(
             "SELECT c.name, COUNT(o.id) AS total_orders "
             "FROM customers c "
@@ -47,7 +48,7 @@ def list_examples(dialect: str | None = Query(default=None)) -> ExamplesResponse
         return ExamplesResponse(examples=EXAMPLES)
 
     if dialect not in SUPPORTED_DIALECTS:
-        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' dialects are supported.")
+        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' (PostgreSQL-compatible) dialects are supported.")
 
     return ExamplesResponse(examples=[example for example in EXAMPLES if example.dialect == dialect])
 
@@ -55,7 +56,7 @@ def list_examples(dialect: str | None = Query(default=None)) -> ExamplesResponse
 @router.post("/validate", response_model=ValidationResponse)
 def validate(payload: QueryRequest) -> ValidationResponse:
     if payload.dialect not in SUPPORTED_DIALECTS:
-        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' dialects are supported.")
+        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' (PostgreSQL-compatible) dialects are supported.")
 
     return validate_query(payload.query, payload.dialect)
 
@@ -63,7 +64,7 @@ def validate(payload: QueryRequest) -> ValidationResponse:
 @router.post("/parse", response_model=ParseResponse)
 def parse(payload: QueryRequest) -> ParseResponse:
     if payload.dialect not in SUPPORTED_DIALECTS:
-        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' dialects are supported.")
+        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' (PostgreSQL-compatible) dialects are supported.")
 
     try:
         return parse_query(payload.query, payload.dialect)
@@ -74,9 +75,27 @@ def parse(payload: QueryRequest) -> ParseResponse:
 @router.post("/visualize", response_model=VisualizationResponse)
 def visualize(payload: QueryRequest) -> VisualizationResponse:
     if payload.dialect not in SUPPORTED_DIALECTS:
-        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' dialects are supported.")
+        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' (PostgreSQL-compatible) dialects are supported.")
 
     try:
         return visualize_query(payload.query, payload.dialect)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/explain", response_model=ExplainResponse)
+def explain(payload: QueryRequest) -> ExplainResponse:
+    if payload.dialect not in SUPPORTED_DIALECTS:
+        raise HTTPException(status_code=400, detail="Only 'postgres' and 'sql' (PostgreSQL-compatible) dialects are supported.")
+
+    try:
+        parsed = parse_query(payload.query, payload.dialect)
+        analyzed = explain_query(payload.query, payload.dialect)
+        return ExplainResponse(
+            dialect=payload.dialect,
+            normalized_query=parsed.normalized_query,
+            statement_type=parsed.statement_type,
+            explain_analysis=analyzed,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
