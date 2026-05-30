@@ -1,6 +1,7 @@
 import type {
   Dialect,
   DialectsResponse,
+  ExplainResponse,
   ExamplesResponse,
   ParseResponse,
   QueryRequest,
@@ -8,7 +9,7 @@ import type {
   VisualizationResponse,
 } from "@/lib/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -49,4 +50,8 @@ export async function parseQuery(data: QueryRequest): Promise<ParseResponse> {
 
 export async function visualizeQuery(data: QueryRequest): Promise<VisualizationResponse> {
   return request<VisualizationResponse>("/visualize", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function explainQuery(data: QueryRequest): Promise<ExplainResponse> {
+  return request<ExplainResponse>("/explain", { method: "POST", body: JSON.stringify(data) });
 }

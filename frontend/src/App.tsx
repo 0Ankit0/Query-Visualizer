@@ -1,16 +1,12 @@
-"use client";
-
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { ExplainPanel, ErrorPanel, ParsePanel, ValidationPanel } from "@/components/home/AnalysisPanels";
+import { QueryInputForm } from "@/components/home/QueryInputForm";
 import { StepCard } from "@/components/StepCard";
 import { VisualizationBoard } from "@/components/VisualizationBoard";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { fetchDialects, fetchExamples, parseQuery, validateQuery, visualizeQuery } from "@/lib/api";
-import type { Dialect, ParseResponse, QueryExample, ValidationResponse, VisualizationResponse } from "@/lib/types";
+import { explainQuery, fetchDialects, fetchExamples, parseQuery, validateQuery, visualizeQuery } from "@/lib/api";
+import type { Dialect, ExplainAnalysis, ParseResponse, QueryExample, ValidationResponse, VisualizationResponse } from "@/lib/types";
 
 const FALLBACK_QUERY = `SELECT c.name, COUNT(o.id) AS total_orders
 FROM customers c
@@ -21,7 +17,7 @@ HAVING COUNT(o.id) > 5
 ORDER BY total_orders DESC
 LIMIT 10;`;
 
-export default function HomePage() {
+export default function App() {
   const [dialect, setDialect] = useState<Dialect>("postgres");
   const [query, setQuery] = useState(FALLBACK_QUERY);
   const [supportedDialects, setSupportedDialects] = useState<Dialect[]>(["postgres", "sql"]);
@@ -30,6 +26,7 @@ export default function HomePage() {
   const [validation, setValidation] = useState<ValidationResponse | null>(null);
   const [parseResult, setParseResult] = useState<ParseResponse | null>(null);
   const [visualization, setVisualization] = useState<VisualizationResponse | null>(null);
+  const [explainResult, setExplainResult] = useState<ExplainAnalysis | null>(null);
 
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -60,18 +57,21 @@ export default function HomePage() {
 
     try {
       const payload = { query, dialect };
-      const [validationResponse, parseResponse, visualizeResponse] = await Promise.all([
+      const [validationResponse, parseResponse, explainResponse, visualizeResponse] = await Promise.all([
         validateQuery(payload),
         parseQuery(payload),
+        explainQuery(payload),
         visualizeQuery(payload),
       ]);
 
       setValidation(validationResponse);
       setParseResult(parseResponse);
+      setExplainResult(explainResponse.explain_analysis);
       setVisualization(visualizeResponse);
     } catch (err) {
       setValidation(null);
       setParseResult(null);
+      setExplainResult(null);
       setVisualization(null);
       setError(err instanceof Error ? err.message : "Unexpected request error.");
     } finally {
@@ -85,115 +85,32 @@ export default function HomePage() {
         <CardHeader>
           <CardTitle className="text-2xl">Database Query Visualizer</CardTitle>
           <CardDescription>
-            Validate, parse, and visualize SQL execution flow for PostgreSQL and generic SQL.
+            Validate, parse, and visualize SQL execution flow for PostgreSQL and PostgreSQL-compatible SQL.
           </CardDescription>
         </CardHeader>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Run analysis</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="dialect">Dialect</Label>
-              <Select id="dialect" value={dialect} onChange={(event) => setDialect(event.target.value as Dialect)}>
-                {supportedDialects.map((supported) => (
-                  <option key={supported} value={supported}>
-                    {supported === "postgres" ? "PostgreSQL" : "SQL (generic)"}
-                  </option>
-                ))}
-              </Select>
-            </div>
+      <QueryInputForm
+        dialect={dialect}
+        supportedDialects={supportedDialects}
+        examples={examplesForDialect}
+        query={query}
+        loading={loading}
+        onDialectChange={setDialect}
+        onExampleSelect={(name) => {
+          const selected = examplesForDialect.find((item) => item.name === name);
+          if (selected) {
+            setQuery(selected.query);
+          }
+        }}
+        onQueryChange={setQuery}
+        onSubmit={onSubmit}
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="example">Quick examples</Label>
-              <Select
-                id="example"
-                onChange={(event) => {
-                  const selected = examplesForDialect.find((item) => item.name === event.target.value);
-                  if (selected) {
-                    setQuery(selected.query);
-                  }
-                }}
-                defaultValue=""
-              >
-                <option value="" disabled>
-                  Pick an example query
-                </option>
-                {examplesForDialect.map((example) => (
-                  <option key={example.name} value={example.name}>
-                    {example.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="query">SQL Query</Label>
-              <Textarea id="query" rows={12} value={query} onChange={(event) => setQuery(event.target.value)} />
-            </div>
-
-            <Button type="submit" disabled={loading}>
-              {loading ? "Processing..." : "Validate + Parse + Visualize"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <Card className="border-destructive/40 bg-destructive/10">
-          <CardContent className="p-4 text-sm">
-            <strong>Error:</strong> {error}
-          </CardContent>
-        </Card>
-      )}
-
-      {validation && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Validation</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <p>
-              <strong>Status:</strong> {validation.is_valid ? "Valid SQL" : "Invalid SQL"}
-            </p>
-            {validation.normalized_query && (
-              <p>
-                <strong>Normalized query:</strong>
-                <br />
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{validation.normalized_query}</code>
-              </p>
-            )}
-            {!validation.is_valid && validation.errors.length > 0 && (
-              <ul className="list-inside list-disc">
-                {validation.errors.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {parseResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Parse Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <p>
-              <strong>Statement type:</strong> {parseResult.statement_type}
-            </p>
-            <p>
-              <strong>AST SQL (compact):</strong>
-              <br />
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{parseResult.ast_sql}</code>
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      <ErrorPanel message={error} />
+      <ValidationPanel validation={validation} />
+      <ParsePanel parseResult={parseResult} />
+      <ExplainPanel explain={explainResult} />
 
       {visualization && (
         <section className="space-y-4">

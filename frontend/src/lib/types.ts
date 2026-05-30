@@ -58,6 +58,32 @@ export interface VisualizationResponse {
   order_by: string[];
   steps: VisualizationStep[];
   notes: string[];
+  explain_analysis?: ExplainAnalysis | null;
+}
+
+export interface ExplainPlanNode {
+  node_type: string;
+  relation_name?: string | null;
+  startup_cost?: number | null;
+  total_cost?: number | null;
+  actual_total_time?: number | null;
+  actual_rows?: number | null;
+  children: ExplainPlanNode[];
+}
+
+export interface ExplainAnalysis {
+  available: boolean;
+  summary: string;
+  root_node?: ExplainPlanNode | null;
+  plan_lines: string[];
+  tips: string[];
+}
+
+export interface ExplainResponse {
+  dialect: Dialect;
+  normalized_query: string;
+  statement_type: string;
+  explain_analysis: ExplainAnalysis;
 }
 
 export interface QueryExample {
