@@ -45,6 +45,23 @@ def test_visualize_endpoint_returns_steps() -> None:
     payload = response.json()
     assert payload["statement_type"] == "SELECT"
     assert len(payload["steps"]) >= 4
+    assert "explain_analysis" in payload
+
+
+def test_explain_endpoint_returns_analysis_payload() -> None:
+    response = client.post(
+        "/api/v1/explain",
+        json={
+            "dialect": "postgres",
+            "query": "SELECT id FROM users ORDER BY id DESC LIMIT 2",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["statement_type"] == "SELECT"
+    assert "explain_analysis" in payload
+    assert "available" in payload["explain_analysis"]
 
 
 def test_examples_endpoint_filtered() -> None:

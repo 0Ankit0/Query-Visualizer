@@ -1,4 +1,4 @@
-from app.services.visualizer import parse_query, validate_query, visualize_query
+from app.services.visualizer import explain_query, parse_query, validate_query, visualize_query
 
 
 def test_select_visualization_order() -> None:
@@ -68,3 +68,11 @@ def test_invalid_visualize_sql_raises_helpful_error() -> None:
         assert "Could not parse SQL query" in str(exc)
     else:
         raise AssertionError("Expected parse failure for invalid SQL")
+
+
+def test_explain_query_fallback_without_dsn(monkeypatch) -> None:
+    monkeypatch.delenv("QUERY_VISUALIZER_POSTGRES_DSN", raising=False)
+    result = explain_query("SELECT 1", "postgres")
+
+    assert result.available is False
+    assert "QUERY_VISUALIZER_POSTGRES_DSN" in result.summary
