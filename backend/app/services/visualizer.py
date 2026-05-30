@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from typing import Any
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+try:
+    import psycopg
+except Exception:  # pragma: no cover - optional dependency in constrained environments
+    psycopg = None
+
 from app.models.schemas import (
+    ExplainAnalysis,
+    ExplainPlanNode,
     ParseResponse,
     ValidationResponse,
     VisualizationJoin,
@@ -99,7 +108,9 @@ STEP_DEFINITIONS = {
 
 
 def _dialect_for_sqlglot(dialect: str) -> str:
-    return "postgres" if dialect == "postgres" else "sqlite"
+    if dialect in SUPPORTED_DIALECTS:
+        return "postgres"
+    return dialect
 
 
 def _sql(node: exp.Expression, dialect: str) -> str:
@@ -546,6 +557,139 @@ def _select_context(statement: exp.Expression) -> exp.Select | None:
     return None
 
 
+def _plan_node_from_postgres(raw_plan: dict[str, Any]) -> ExplainPlanNode:
+    children = [_plan_node_from_postgres(child) for child in raw_plan.get("Plans", []) if isinstance(child, dict)]
+
+    return ExplainPlanNode(
+        node_type=str(raw_plan.get("Node Type", "Unknown")),
+        relation_name=raw_plan.get("Relation Name"),
+        startup_cost=float(raw_plan["Startup Cost"]) if raw_plan.get("Startup Cost") is not None else None,
+        total_cost=float(raw_plan["Total Cost"]) if raw_plan.get("Total Cost") is not None else None,
+        actual_total_time=(
+            float(raw_plan["Actual Total Time"]) if raw_plan.get("Actual Total Time") is not None else None
+        ),
+        actual_rows=int(raw_plan["Actual Rows"]) if raw_plan.get("Actual Rows") is not None else None,
+        children=children,
+    )
+
+
+def _node_label(node: ExplainPlanNode) -> str:
+    base = node.node_type
+    if node.relation_name:
+        base = f"{base} on {node.relation_name}"
+    return base
+
+
+def _flatten_plan(node: ExplainPlanNode, depth: int = 0) -> list[str]:
+    indent = "  " * depth
+    metrics: list[str] = []
+    if node.actual_rows is not None:
+        metrics.append(f"rows={node.actual_rows}")
+    if node.actual_total_time is not None:
+        metrics.append(f"time={node.actual_total_time:.3f}ms")
+    line = f"{indent}- {_node_label(node)}"
+    if metrics:
+        line = f"{line} ({', '.join(metrics)})"
+
+    lines = [line]
+    for child in node.children:
+        lines.extend(_flatten_plan(child, depth + 1))
+    return lines
+
+
+def _tips_from_plan(node: ExplainPlanNode) -> list[str]:
+    tips: list[str] = []
+    stack = [node]
+
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        node_type_upper = current.node_type.upper()
+
+        if "SEQ SCAN" in node_type_upper:
+            tips.append("Sequential scan detected. If this table is large, verify indexes on filter/join columns.")
+        if "NESTED LOOP" in node_type_upper:
+            tips.append("Nested Loop join detected. Validate cardinality and index coverage to avoid expensive loops.")
+        if "SORT" in node_type_upper:
+            tips.append("Sort node detected. Consider index-backed ordering for large datasets.")
+        if "HASH" in node_type_upper and current.actual_rows and current.actual_rows > 100_000:
+            tips.append("Large hash operation detected. Check work_mem and join/filter selectivity.")
+
+    deduped: list[str] = []
+    for tip in tips:
+        if tip not in deduped:
+            deduped.append(tip)
+    return deduped
+
+
+def explain_query(query: str, dialect: str) -> ExplainAnalysis:
+    if dialect not in SUPPORTED_DIALECTS:
+        raise ValueError("Only 'postgres' and 'sql' dialects are supported.")
+
+    if psycopg is None:
+        return ExplainAnalysis(
+            available=False,
+            summary="PostgreSQL EXPLAIN is unavailable because psycopg is not installed.",
+            tips=["Install psycopg and set QUERY_VISUALIZER_POSTGRES_DSN to enable live EXPLAIN ANALYZE."],
+        )
+
+    dsn = os.getenv("QUERY_VISUALIZER_POSTGRES_DSN", "").strip()
+    if not dsn:
+        return ExplainAnalysis(
+            available=False,
+            summary="Live EXPLAIN ANALYZE is disabled because QUERY_VISUALIZER_POSTGRES_DSN is not set.",
+            tips=[
+                "Set QUERY_VISUALIZER_POSTGRES_DSN to a PostgreSQL connection string.",
+                "Example: postgresql://postgres:postgres@localhost:5432/query_visualizer",
+            ],
+        )
+
+    try:
+        with psycopg.connect(dsn) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {query}")
+                row = cursor.fetchone()
+    except Exception as exc:
+        return ExplainAnalysis(
+            available=False,
+            summary=f"EXPLAIN ANALYZE failed: {exc}",
+            tips=["Ensure tables exist and the SQL can run against the configured database."],
+        )
+
+    if not row or not row[0] or not isinstance(row[0], list):
+        return ExplainAnalysis(
+            available=False,
+            summary="EXPLAIN ANALYZE returned an unexpected payload.",
+            tips=["Use PostgreSQL 12+ and keep FORMAT JSON enabled."],
+        )
+
+    payload = row[0][0] if row[0] and isinstance(row[0][0], dict) else None
+    if not payload or "Plan" not in payload:
+        return ExplainAnalysis(
+            available=False,
+            summary="Could not find a plan tree in EXPLAIN ANALYZE output.",
+            tips=["Verify the query is a single executable SQL statement."],
+        )
+
+    root_node = _plan_node_from_postgres(payload["Plan"])
+    plan_lines = _flatten_plan(root_node)
+    execution_ms = payload.get("Execution Time")
+    planning_ms = payload.get("Planning Time")
+    summary_parts = [f"Root operation: {_node_label(root_node)}"]
+    if isinstance(planning_ms, (int, float)):
+        summary_parts.append(f"planning={planning_ms:.3f}ms")
+    if isinstance(execution_ms, (int, float)):
+        summary_parts.append(f"execution={execution_ms:.3f}ms")
+
+    return ExplainAnalysis(
+        available=True,
+        summary=" | ".join(summary_parts),
+        root_node=root_node,
+        plan_lines=plan_lines,
+        tips=_tips_from_plan(root_node),
+    )
+
+
 def parse_query(query: str, dialect: str) -> ParseResponse:
     try:
         statement = _parse_statement(query, dialect)
@@ -591,6 +735,8 @@ def visualize_query(query: str, dialect: str) -> VisualizationResponse:
     if not steps:
         raise ValueError("No visualizable steps were detected for this query.")
 
+    explain_analysis = explain_query(query, dialect)
+
     notes = [
         "Visualization uses SQL execution flow (which differs from clause writing order).",
         "The parser is AST-based to improve correctness over simple keyword matching.",
@@ -598,6 +744,10 @@ def visualize_query(query: str, dialect: str) -> VisualizationResponse:
 
     if dialect == "postgres":
         notes.append("PostgreSQL mode enables PostgreSQL syntax and RETURNING clause visualization.")
+    if explain_analysis.available:
+        notes.append("Execution-plan insights come from PostgreSQL EXPLAIN ANALYZE (FORMAT JSON).")
+    else:
+        notes.append(explain_analysis.summary)
 
     select_context = _select_context(statement)
     groups = _group_items(select_context.args.get("group"), dialect) if isinstance(select_context, exp.Select) else []
@@ -623,4 +773,5 @@ def visualize_query(query: str, dialect: str) -> VisualizationResponse:
         order_by=order_by,
         steps=steps,
         notes=notes,
+        explain_analysis=explain_analysis,
     )
